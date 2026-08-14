@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Sparkles, Image as ImageIcon, Download, RefreshCw, Wand2, Eye, Paintbrush, Eraser } from 'lucide-react';
 import { generateNailMask } from './utils/nailDetector';
+import { generateSuperimposedNails } from './utils/proceduralNails';
 
 const SAMPLE_PHOTO = "https://images.unsplash.com/photo-1604654894610-df63bc536371?q=80&w=1000&auto=format&fit=crop";
 
@@ -118,34 +119,23 @@ export default function App() {
   };
 
 const handleGenerate = async () => {
-    if (!userImage || !prompt.trim() || !maskImage) return;
-    setIsGenerating(true);
+  if (!userImage || !prompt.trim() || !maskImage) return;
+  setIsGenerating(true);
 
-    try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image: userImage,
-          mask: maskImage,
-          prompt: prompt,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.images) {
-        setDesigns(data.images);
-      } else {
-        alert(`Generation failed: ${data.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      console.error("Client API Error:", err);
-      alert("Failed to connect to generation service.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
+  try {
+    const superimposedResults = await generateSuperimposedNails(
+      userImage,
+      maskImage,
+      prompt
+    );
+    setDesigns(superimposedResults);
+  } catch (err) {
+    console.error("Superimposition Error:", err);
+    alert("Failed to superimpose nail designs.");
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-neutral-800 antialiased">
