@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Sparkles, Image as ImageIcon, Download, RefreshCw, Wand2, Eye, CheckCircle2 } from 'lucide-react';
+import { Upload, Sparkles, Image as ImageIcon, Download, RefreshCw, Wand2, Eye, Paintbrush, Eraser } from 'lucide-react';
 import { generateNailMask } from './utils/nailDetector';
 
 const SAMPLE_PHOTO = "https://images.unsplash.com/photo-1604654894610-df63bc536371?q=80&w=1000&auto=format&fit=crop";
@@ -18,17 +18,21 @@ export default function App() {
   const [maskImage, setMaskImage] = useState<string | null>(null);
   const [isDetectingMask, setIsDetectingMask] = useState<boolean>(false);
   const [showMaskOverlay, setShowMaskOverlay] = useState<boolean>(false);
-  const [handDetected, setHandDetected] = useState<boolean | null>(null);
+  const [isPaintMode, setIsPaintMode] = useState<boolean>(false);
+  const [brushMode, setBrushMode] = useState<'paint' | 'erase'>('paint');
 
   const [prompt, setPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [designs, setDesigns] = useState<string[] | null>(null);
 
-  // Auto-detect hand & generate nail mask whenever image changes
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [isDrawing, setIsDrawing] = useState<boolean>(false);
+
+  // Load image and compute initial AI mask
   useEffect(() => {
     if (!userImage) {
       setMaskImage(null);
-      setHandDetected(null);
+      setIsPaintMode(false);
       return;
     }
 
@@ -36,22 +40,73 @@ export default function App() {
     setIsDetectingMask(true);
 
     generateNailMask(userImage)
-      .then(({ maskUrl, handDetected }) => {
+      .then(({ maskUrl }) => {
         if (isMounted) {
           setMaskImage(maskUrl);
-          setHandDetected(handDetected);
           setIsDetectingMask(false);
         }
       })
-      .catch((err) => {
-        console.error("Mask generation error:", err);
+      .catch(() => {
         if (isMounted) setIsDetectingMask(false);
       });
 
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, [userImage]);
+
+  // Sync canvas with mask when entering paint mode
+  useEffect(() => {
+    if (isPaintMode && maskImage && canvasRef.current && userImage) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        const maskImg = new Image();
+        maskImg.onload = () => {
+          ctx.drawImage(maskImg, 0, 0);
+        };
+        maskImg.src = maskImage;
+      };
+      img.src = userImage;
+    }
+  }, [isPaintMode, maskImage, userImage]);
+
+  // Manual Canvas Drawing Handlers
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDrawing(true);
+    draw(e);
+  };
+
+  const handleMouseUp = () => {
+    if (isDrawing && canvasRef.current) {
+      setIsDrawing(false);
+      setMaskImage(canvasRef.current.toDataURL('image/png'));
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing && e.type !== 'mousedown') return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    ctx.fillStyle = brushMode === 'paint' ? '#FFFFFF' : '#000000';
+    ctx.beginPath();
+    ctx.arc(x, y, 18 * scaleX, 0, Math.PI * 2);
+    ctx.fill();
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -88,7 +143,7 @@ export default function App() {
             <span className="font-semibold text-lg tracking-tight">nailedit</span>
           </div>
           <span className="text-xs uppercase tracking-wider text-neutral-500 font-mono">
-            AI Hand & Nail Detection Active
+            Interactive AI Masking Active
           </span>
         </div>
       </header>
@@ -100,7 +155,7 @@ export default function App() {
             Nail Design, Superimposed.
           </h1>
           <p className="text-neutral-400 text-base">
-            Upload a photo of your hand, let client-side AI detect your nails, and describe your custom vibe.
+            Upload your hand photo, view or brush-refine the AI nail mask, and generate custom nail art.
           </p>
         </div>
 
@@ -108,53 +163,102 @@ export default function App() {
         <section className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl backdrop-blur-sm">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
             
-            {/* Left: Upload & Detection Preview */}
+            {/* Left: Upload & Interactive Brush Canvas */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold uppercase text-neutral-400 tracking-wider">
                   1. Upload Hand Photo
                 </label>
-                {handDetected && (
-                  <span className="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Nails Isolated
-                  </span>
+                {userImage && (
+                  <button
+                    onClick={() => setIsPaintMode(!isPaintMode)}
+                    className="text-xs text-neutral-300 hover:text-white flex items-center gap-1 font-mono underline"
+                  >
+                    <Paintbrush className="w-3.5 h-3.5 text-amber-400" />
+                    {isPaintMode ? "Done Editing" : "Touch-up Mask"}
+                  </button>
                 )}
               </div>
 
-              <div className="relative group min-h-[260px] border-2 border-dashed border-neutral-800 hover:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-4 transition-all duration-200 bg-neutral-950/40 overflow-hidden">
+              <div className="relative group min-h-[280px] border-2 border-dashed border-neutral-800 hover:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-4 transition-all duration-200 bg-neutral-950/40 overflow-hidden">
                 {userImage ? (
                   <div className="relative w-full h-full flex items-center justify-center">
-                    <img 
-                      src={showMaskOverlay && maskImage ? maskImage : userImage} 
-                      alt="Hand or Nail Mask" 
-                      className="max-h-60 rounded-lg object-contain shadow-lg transition-all duration-300"
-                    />
-
-                    {/* Mask Loading Indicator */}
-                    {isDetectingMask && (
-                      <div className="absolute inset-0 bg-neutral-950/70 backdrop-blur-xs flex flex-col items-center justify-center gap-2 rounded-lg text-xs text-neutral-300">
-                        <RefreshCw className="w-5 h-5 animate-spin text-neutral-100" />
-                        Scanning hand landmarks...
+                    
+                    {/* Interactive Brush Canvas Mode */}
+                    {isPaintMode ? (
+                      <div className="relative flex flex-col items-center gap-2">
+                        <div className="relative border border-amber-500/50 rounded-lg overflow-hidden cursor-crosshair">
+                          <img 
+                            src={userImage} 
+                            alt="Background hand" 
+                            className="max-h-60 rounded-lg opacity-40 object-contain"
+                          />
+                          <canvas
+                            ref={canvasRef}
+                            onMouseDown={handleMouseDown}
+                            onMouseUp={handleMouseUp}
+                            onMouseMove={draw}
+                            className="absolute inset-0 w-full h-full object-contain opacity-75"
+                          />
+                        </div>
+                        
+                        {/* Brush Controls */}
+                        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-lg text-xs">
+                          <button
+                            onClick={() => setBrushMode('paint')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded ${brushMode === 'paint' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
+                          >
+                            <Paintbrush className="w-3 h-3" /> Paint White
+                          </button>
+                          <button
+                            onClick={() => setBrushMode('erase')}
+                            className={`flex items-center gap-1 px-2 py-1 rounded ${brushMode === 'erase' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
+                          >
+                            <Eraser className="w-3 h-3" /> Erase
+                          </button>
+                          <button
+                            onClick={() => setIsPaintMode(false)}
+                            className="text-neutral-400 hover:text-white pl-2 border-l border-neutral-800"
+                          >
+                            Save
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    ) : (
+                      /* Standard Photo/Mask Preview */
+                      <>
+                        <img 
+                          src={showMaskOverlay && maskImage ? maskImage : userImage} 
+                          alt="Hand or Nail Mask" 
+                          className="max-h-60 rounded-lg object-contain shadow-lg transition-all duration-300"
+                        />
 
-                    <div className="absolute top-2 right-2 flex gap-2">
-                      {maskImage && (
-                        <button
-                          onClick={() => setShowMaskOverlay(!showMaskOverlay)}
-                          className="bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-md text-xs border border-neutral-700 backdrop-blur-md flex items-center gap-1.5 transition-all"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          {showMaskOverlay ? "Show Photo" : "View AI Mask"}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setUserImage(null)}
-                        className="bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-md text-xs border border-neutral-700 backdrop-blur-md transition-all"
-                      >
-                        Change
-                      </button>
-                    </div>
+                        {isDetectingMask && (
+                          <div className="absolute inset-0 bg-neutral-950/70 backdrop-blur-xs flex flex-col items-center justify-center gap-2 rounded-lg text-xs text-neutral-300">
+                            <RefreshCw className="w-5 h-5 animate-spin text-neutral-100" />
+                            Detecting nails...
+                          </div>
+                        )}
+
+                        <div className="absolute top-2 right-2 flex gap-2">
+                          {maskImage && (
+                            <button
+                              onClick={() => setShowMaskOverlay(!showMaskOverlay)}
+                              className="bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-md text-xs border border-neutral-700 backdrop-blur-md flex items-center gap-1.5 transition-all"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              {showMaskOverlay ? "Show Photo" : "View AI Mask"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setUserImage(null)}
+                            className="bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-md text-xs border border-neutral-700 backdrop-blur-md transition-all"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <label className="flex flex-col items-center justify-center cursor-pointer w-full h-full space-y-3 py-8">
@@ -163,7 +267,7 @@ export default function App() {
                     </div>
                     <div className="text-center space-y-1">
                       <p className="text-sm font-medium text-neutral-300">Click to upload hand photo</p>
-                      <p className="text-xs text-neutral-500">Auto-detects fingernails automatically</p>
+                      <p className="text-xs text-neutral-500">Auto-detects or manually paint nail mask</p>
                     </div>
                     <input 
                       type="file" 
@@ -181,7 +285,7 @@ export default function App() {
                   className="text-xs text-neutral-400 hover:text-neutral-200 flex items-center gap-1.5 transition-colors pt-1"
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
-                  Try sample photo with AI auto-detection
+                  Try sample hand photo
                 </button>
               )}
             </div>
@@ -292,7 +396,7 @@ export default function App() {
             <div className="border border-dashed border-neutral-800 rounded-2xl p-12 text-center bg-neutral-950/30 text-neutral-500 space-y-2">
               <p className="text-sm">No designs generated yet.</p>
               <p className="text-xs text-neutral-600">
-                Upload your hand photo to auto-generate the nail mask, then click "Generate".
+                Upload your hand photo, touch up the white mask if needed, and click "Generate".
               </p>
             </div>
           )}
