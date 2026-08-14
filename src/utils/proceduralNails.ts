@@ -1,7 +1,7 @@
 /**
  * Converts a Black & White mask into a true Alpha Transparency mask.
  * Black pixels (#000000) -> Alpha 0 (Transparent)
- * White pixels (#FFFFFF) -> Alpha 255 (Opaque)
+ * White pixels (#FFFFFF) -> Alpha 255 (Solid Opaque)
  */
 function createAlphaMask(maskImg: HTMLImageElement, width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
@@ -16,8 +16,8 @@ function createAlphaMask(maskImg: HTMLImageElement, width: number, height: numbe
   for (let i = 0; i < data.length; i += 4) {
     // Red channel value (0 = black, 255 = white)
     const brightness = data[i]; 
-    // Set Alpha channel equal to brightness
-    data[i + 3] = brightness; 
+    // High contrast threshold to ensure solid opaque white center
+    data[i + 3] = brightness > 30 ? 255 : 0; 
   }
 
   ctx.putImageData(imgData, 0, 0);
@@ -25,7 +25,8 @@ function createAlphaMask(maskImg: HTMLImageElement, width: number, height: numbe
 }
 
 /**
- * Superimposes custom nail art textures directly onto the user's fingernails.
+ * Superimposes custom nail art textures directly onto the user's fingernails
+ * with a 100% opaque base coat to block original nail polish.
  */
 export async function generateSuperimposedNails(
   userImgUrl: string,
@@ -49,7 +50,7 @@ export async function generateSuperimposedNails(
   const width = img.naturalWidth || img.width;
   const height = img.naturalHeight || img.height;
 
-  // Convert the B&W mask to a transparent cutout canvas
+  // Convert B&W mask to sharp transparent cutout
   const alphaMaskCanvas = createAlphaMask(mask, width, height);
 
   const lowerPrompt = prompt.toLowerCase();
@@ -62,53 +63,65 @@ export async function generateSuperimposedNails(
   const results: string[] = [];
 
   for (const preset of presets) {
-    // Main composite canvas
     const mainCanvas = document.createElement("canvas");
     mainCanvas.width = width;
     mainCanvas.height = height;
     const ctx = mainCanvas.getContext("2d")!;
 
-    // 1. Draw original hand photo as base layer
+    // 1. Draw base photo
     ctx.drawImage(img, 0, 0, width, height);
 
-    // 2. Build isolated nail polish texture
+    // 2. OPAQUE PRIMER BASE COAT (Erases original dark nail color 100%)
+    const primerCanvas = document.createElement("canvas");
+    primerCanvas.width = width;
+    primerCanvas.height = height;
+    const pCtx = primerCanvas.getContext("2d")!;
+    pCtx.fillStyle = "#FFFFFF";
+    pCtx.fillRect(0, 0, width, height);
+    pCtx.globalCompositeOperation = "destination-in";
+    pCtx.drawImage(alphaMaskCanvas, 0, 0, width, height);
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1.0;
+    ctx.drawImage(primerCanvas, 0, 0, width, height);
+
+    // 3. COLOR / DESIGN LAYER (100% Opaque)
     const textureCanvas = document.createElement("canvas");
     textureCanvas.width = width;
     textureCanvas.height = height;
     const tCtx = textureCanvas.getContext("2d")!;
 
-    // Draw pattern / gradient
     preset.drawTexture(tCtx, width, height);
 
-    // Clip texture strictly to the white nail shapes using alpha mask
     tCtx.globalCompositeOperation = "destination-in";
     tCtx.drawImage(alphaMaskCanvas, 0, 0, width, height);
 
-    // 3. Composite design directly onto user's fingernails
-    ctx.globalCompositeOperation = "source-over"; // Cover existing nail polish
-    ctx.globalAlpha = 0.92;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1.0; // Fully opaque, zero bleed-through!
     ctx.drawImage(textureCanvas, 0, 0, width, height);
 
-    // 4. Add realistic 3D gel gloss sheen highlight over nails
+    // 4. REALISTIC 3D GEL GLOSS SPECULAR HIGHLIGHT
+    const glossCanvas = document.createElement("canvas");
+    glossCanvas.width = width;
+    glossCanvas.height = height;
+    const gCtx = glossCanvas.getContext("2d")!;
+
+    // Curated 3D light reflection gradient
+    const glossGrad = gCtx.createLinearGradient(0, 0, width * 0.7, height);
+    glossGrad.addColorStop(0, "rgba(255, 255, 255, 0.65)");
+    glossGrad.addColorStop(0.25, "rgba(255, 255, 255, 0.0)");
+    glossGrad.addColorStop(0.7, "rgba(0, 0, 0, 0.25)"); // Subtle edge shadow for 3D depth
+    glossGrad.addColorStop(1, "rgba(255, 255, 255, 0.4)");
+
+    gCtx.fillStyle = glossGrad;
+    gCtx.fillRect(0, 0, width, height);
+
+    gCtx.globalCompositeOperation = "destination-in";
+    gCtx.drawImage(alphaMaskCanvas, 0, 0, width, height);
+
     ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 0.4;
-
-    const sheenCanvas = document.createElement("canvas");
-    sheenCanvas.width = width;
-    sheenCanvas.height = height;
-    const sCtx = sheenCanvas.getContext("2d")!;
-
-    const sheenGrad = sCtx.createLinearGradient(0, 0, width, height);
-    sheenGrad.addColorStop(0, "rgba(255,255,255,0.9)");
-    sheenGrad.addColorStop(0.4, "rgba(255,255,255,0.0)");
-    sheenGrad.addColorStop(1, "rgba(255,255,255,0.7)");
-    sCtx.fillStyle = sheenGrad;
-    sCtx.fillRect(0, 0, width, height);
-
-    sCtx.globalCompositeOperation = "destination-in";
-    sCtx.drawImage(alphaMaskCanvas, 0, 0, width, height);
-
-    ctx.drawImage(sheenCanvas, 0, 0, width, height);
+    ctx.globalAlpha = 0.85;
+    ctx.drawImage(glossCanvas, 0, 0, width, height);
 
     results.push(mainCanvas.toDataURL("image/png"));
   }
@@ -122,11 +135,11 @@ function getPreset(prompt: string, variationIndex: number) {
       drawTexture: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
         const grad = ctx.createLinearGradient(0, 0, w, h);
         if (variationIndex === 0) {
-          grad.addColorStop(0, "#E0E0E0"); grad.addColorStop(0.5, "#FFFFFF"); grad.addColorStop(1, "#8E8E8E");
+          grad.addColorStop(0, "#D0D0D0"); grad.addColorStop(0.5, "#FFFFFF"); grad.addColorStop(1, "#707070");
         } else if (variationIndex === 1) {
-          grad.addColorStop(0, "#FFD700"); grad.addColorStop(0.5, "#FFF8DC"); grad.addColorStop(1, "#B8860B");
+          grad.addColorStop(0, "#FFD700"); grad.addColorStop(0.5, "#FFF8DC"); grad.addColorStop(1, "#996515");
         } else {
-          grad.addColorStop(0, "#C0C0C0"); grad.addColorStop(0.5, "#4B0082"); grad.addColorStop(1, "#E6E6FA");
+          grad.addColorStop(0, "#E6E6FA"); grad.addColorStop(0.5, "#4B0082"); grad.addColorStop(1, "#2E0854");
         }
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
@@ -139,11 +152,11 @@ function getPreset(prompt: string, variationIndex: number) {
       drawTexture: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
         const grad = ctx.createLinearGradient(0, 0, w, h);
         if (variationIndex === 0) {
-          grad.addColorStop(0, "#FFD1DC"); grad.addColorStop(1, "#FFB6C1");
+          grad.addColorStop(0, "#FFC0CB"); grad.addColorStop(1, "#FF69B4");
         } else if (variationIndex === 1) {
-          grad.addColorStop(0, "#FFF0F5"); grad.addColorStop(1, "#E6E6FA");
+          grad.addColorStop(0, "#FFF0F5"); grad.addColorStop(1, "#D8BFD8");
         } else {
-          grad.addColorStop(0, "#FF1493"); grad.addColorStop(1, "#FFC0CB");
+          grad.addColorStop(0, "#FF1493"); grad.addColorStop(1, "#FFB6C1");
         }
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
@@ -154,22 +167,22 @@ function getPreset(prompt: string, variationIndex: number) {
   if (prompt.includes("black") || prompt.includes("dark") || prompt.includes("matte")) {
     return {
       drawTexture: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-        ctx.fillStyle = variationIndex === 0 ? "#111111" : variationIndex === 1 ? "#1A1A2E" : "#2B1B17";
+        ctx.fillStyle = variationIndex === 0 ? "#121212" : variationIndex === 1 ? "#1A1A2E" : "#2C1D11";
         ctx.fillRect(0, 0, w, h);
       }
     };
   }
 
-  // Aura Gradient / Glazed Sunset default preset
+  // Aura Gradient / Sunset default
   return {
     drawTexture: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
-      const grad = ctx.createRadialGradient(w/2, h/2, 20, w/2, h/2, w/2);
+      const grad = ctx.createRadialGradient(w/2, h/2, 10, w/2, h/2, w/2);
       if (variationIndex === 0) {
-        grad.addColorStop(0, "#FF7E5F"); grad.addColorStop(1, "#FEB47B"); // Sunset Orange
+        grad.addColorStop(0, "#FF5E36"); grad.addColorStop(0.6, "#FFAE33"); grad.addColorStop(1, "#FF3366");
       } else if (variationIndex === 1) {
-        grad.addColorStop(0, "#8A2BE2"); grad.addColorStop(1, "#FF69B4"); // Aura Purple
+        grad.addColorStop(0, "#A100FF"); grad.addColorStop(0.6, "#7100E2"); grad.addColorStop(1, "#FF007A");
       } else {
-        grad.addColorStop(0, "#00F2FE"); grad.addColorStop(1, "#4FACFE"); // Cyan Sheen
+        grad.addColorStop(0, "#00E5FF"); grad.addColorStop(0.6, "#0088FF"); grad.addColorStop(1, "#7000FF");
       }
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
