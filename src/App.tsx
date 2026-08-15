@@ -21,6 +21,7 @@ export default function App() {
   const [showMaskOverlay, setShowMaskOverlay] = useState<boolean>(false);
   const [isPaintMode, setIsPaintMode] = useState<boolean>(false);
   const [brushMode, setBrushMode] = useState<'paint' | 'erase'>('paint');
+  const [brushSize, setBrushSize] = useState<number>(10);
 
   const [prompt, setPrompt] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -29,7 +30,6 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState<boolean>(false);
 
-  // Load image and compute initial AI mask
   useEffect(() => {
     if (!userImage) {
       setMaskImage(null);
@@ -54,7 +54,6 @@ export default function App() {
     return () => { isMounted = false; };
   }, [userImage]);
 
-  // Sync canvas with mask when entering paint mode
   useEffect(() => {
     if (isPaintMode && maskImage && canvasRef.current && userImage) {
       const canvas = canvasRef.current;
@@ -76,7 +75,6 @@ export default function App() {
     }
   }, [isPaintMode, maskImage, userImage]);
 
-  // Manual Canvas Drawing Handlers
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDrawing(true);
     draw(e);
@@ -105,7 +103,7 @@ export default function App() {
 
     ctx.fillStyle = brushMode === 'paint' ? '#FFFFFF' : '#000000';
     ctx.beginPath();
-    ctx.arc(x, y, 18 * scaleX, 0, Math.PI * 2);
+    ctx.arc(x, y, (brushSize / 2) * scaleX, 0, Math.PI * 2);
     ctx.fill();
   };
 
@@ -118,28 +116,27 @@ export default function App() {
     }
   };
 
-const handleGenerate = async () => {
-  if (!userImage || !prompt.trim() || !maskImage) return;
-  setIsGenerating(true);
+  const handleGenerate = async () => {
+    if (!userImage || !prompt.trim() || !maskImage) return;
+    setIsGenerating(true);
 
-  try {
-    const superimposedResults = await generateSuperimposedNails(
-      userImage,
-      maskImage,
-      prompt
-    );
-    setDesigns(superimposedResults);
-  } catch (err) {
-    console.error("Superimposition Error:", err);
-    alert("Failed to superimpose nail designs.");
-  } finally {
-    setIsGenerating(false);
-  }
-};
+    try {
+      const superimposedResults = await generateSuperimposedNails(
+        userImage,
+        maskImage,
+        prompt
+      );
+      setDesigns(superimposedResults);
+    } catch (err) {
+      console.error("Superimposition Error:", err);
+      alert("Failed to superimpose nail designs.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 font-sans selection:bg-neutral-800 antialiased">
-      {/* Header */}
       <header className="border-b border-neutral-900 bg-neutral-950/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -149,27 +146,24 @@ const handleGenerate = async () => {
             <span className="font-semibold text-lg tracking-tight">nailedit</span>
           </div>
           <span className="text-xs uppercase tracking-wider text-neutral-500 font-mono">
-            Interactive AI Masking Active
+            Precision Masking Engine
           </span>
         </div>
       </header>
 
-      {/* Main Layout */}
       <main className="max-w-6xl mx-auto px-6 py-10 space-y-12">
         <div className="text-center max-w-2xl mx-auto space-y-3">
           <h1 className="text-4xl sm:text-5xl font-light tracking-tight text-neutral-50">
             Nail Design, Superimposed.
           </h1>
           <p className="text-neutral-400 text-base">
-            Upload your hand photo, view or brush-refine the AI nail mask, and generate custom nail art.
+            Upload your hand photo, fine-tune the precise nail cuticles, and generate custom designs.
           </p>
         </div>
 
-        {/* Input Box */}
         <section className="bg-neutral-900/60 border border-neutral-800/80 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl backdrop-blur-sm">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
             
-            {/* Left: Upload & Interactive Brush Canvas */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold uppercase text-neutral-400 tracking-wider">
@@ -181,7 +175,7 @@ const handleGenerate = async () => {
                     className="text-xs text-neutral-300 hover:text-white flex items-center gap-1 font-mono underline"
                   >
                     <Paintbrush className="w-3.5 h-3.5 text-amber-400" />
-                    {isPaintMode ? "Done Editing" : "Touch-up Mask"}
+                    {isPaintMode ? "Done Editing" : "Precision Mask Brush"}
                   </button>
                 )}
               </div>
@@ -190,10 +184,9 @@ const handleGenerate = async () => {
                 {userImage ? (
                   <div className="relative w-full h-full flex items-center justify-center">
                     
-                    {/* Interactive Brush Canvas Mode */}
                     {isPaintMode ? (
-                      <div className="relative flex flex-col items-center gap-2">
-                        <div className="relative border border-amber-500/50 rounded-lg overflow-hidden cursor-crosshair">
+                      <div className="relative flex flex-col items-center gap-3 w-full">
+                        <div className="relative border border-amber-500/50 rounded-lg overflow-hidden cursor-crosshair max-h-60">
                           <img 
                             src={userImage} 
                             alt="Background hand" 
@@ -208,30 +201,44 @@ const handleGenerate = async () => {
                           />
                         </div>
                         
-                        {/* Brush Controls */}
-                        <div className="flex items-center gap-2 bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-lg text-xs">
-                          <button
-                            onClick={() => setBrushMode('paint')}
-                            className={`flex items-center gap-1 px-2 py-1 rounded ${brushMode === 'paint' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
-                          >
-                            <Paintbrush className="w-3 h-3" /> Paint White
-                          </button>
-                          <button
-                            onClick={() => setBrushMode('erase')}
-                            className={`flex items-center gap-1 px-2 py-1 rounded ${brushMode === 'erase' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
-                          >
-                            <Eraser className="w-3 h-3" /> Erase
-                          </button>
+                        {/* Precision Toolbar & Size Slider */}
+                        <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 px-3 py-2 rounded-lg text-xs w-full justify-between">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setBrushMode('paint')}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded ${brushMode === 'paint' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
+                            >
+                              <Paintbrush className="w-3 h-3" /> Paint
+                            </button>
+                            <button
+                              onClick={() => setBrushMode('erase')}
+                              className={`flex items-center gap-1 px-2.5 py-1 rounded ${brushMode === 'erase' ? 'bg-neutral-100 text-neutral-950 font-medium' : 'text-neutral-400'}`}
+                            >
+                              <Eraser className="w-3 h-3" /> Erase
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 text-neutral-400">
+                            <span>Size: {brushSize}px</span>
+                            <input
+                              type="range"
+                              min="4"
+                              max="40"
+                              value={brushSize}
+                              onChange={(e) => setBrushSize(Number(e.target.value))}
+                              className="w-20 accent-amber-400 cursor-pointer"
+                            />
+                          </div>
+
                           <button
                             onClick={() => setIsPaintMode(false)}
-                            className="text-neutral-400 hover:text-white pl-2 border-l border-neutral-800"
+                            className="text-neutral-300 hover:text-white font-medium pl-2 border-l border-neutral-800"
                           >
-                            Save
+                            Save Shape
                           </button>
                         </div>
                       </div>
                     ) : (
-                      /* Standard Photo/Mask Preview */
                       <>
                         <img 
                           src={showMaskOverlay && maskImage ? maskImage : userImage} 
@@ -253,7 +260,7 @@ const handleGenerate = async () => {
                               className="bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 px-2.5 py-1 rounded-md text-xs border border-neutral-700 backdrop-blur-md flex items-center gap-1.5 transition-all"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              {showMaskOverlay ? "Show Photo" : "View AI Mask"}
+                              {showMaskOverlay ? "Show Photo" : "View Mask"}
                             </button>
                           )}
                           <button
@@ -273,7 +280,7 @@ const handleGenerate = async () => {
                     </div>
                     <div className="text-center space-y-1">
                       <p className="text-sm font-medium text-neutral-300">Click to upload hand photo</p>
-                      <p className="text-xs text-neutral-500">Auto-detects or manually paint nail mask</p>
+                      <p className="text-xs text-neutral-500">Auto-detects & fine-tune fingernail contours</p>
                     </div>
                     <input 
                       type="file" 
@@ -296,7 +303,6 @@ const handleGenerate = async () => {
               )}
             </div>
 
-            {/* Right: Prompt Input */}
             <div className="space-y-4">
               <label className="text-xs font-semibold uppercase text-neutral-400 tracking-wider">
                 2. Describe Your Vibe
@@ -328,7 +334,6 @@ const handleGenerate = async () => {
             </div>
           </div>
 
-          {/* Action Button */}
           <div className="pt-4 border-t border-neutral-800/60 flex justify-end">
             <button
               onClick={handleGenerate}
@@ -350,7 +355,6 @@ const handleGenerate = async () => {
           </div>
         </section>
 
-        {/* Results Grid */}
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-light text-neutral-200">Suggested Designs</h2>
@@ -402,7 +406,7 @@ const handleGenerate = async () => {
             <div className="border border-dashed border-neutral-800 rounded-2xl p-12 text-center bg-neutral-950/30 text-neutral-500 space-y-2">
               <p className="text-sm">No designs generated yet.</p>
               <p className="text-xs text-neutral-600">
-                Upload your hand photo, touch up the white mask if needed, and click "Generate".
+                Upload your hand photo, trace the cuticles with the brush, and click "Generate".
               </p>
             </div>
           )}

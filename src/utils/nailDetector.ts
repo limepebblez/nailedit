@@ -24,18 +24,17 @@ export async function initHandLandmarker(): Promise<HandLandmarker> {
 }
 
 const FINGER_PAIRS = [
-  { tip: 4, dip: 3, mcp: 2 },   // Thumb
-  { tip: 8, dip: 7, mcp: 5 },   // Index
-  { tip: 12, dip: 11, mcp: 9 }, // Middle
-  { tip: 16, dip: 15, mcp: 13 },// Ring
-  { tip: 20, dip: 19, mcp: 17 },// Pinky
+  { tip: 4, dip: 3 },   // Thumb
+  { tip: 8, dip: 7 },   // Index
+  { tip: 12, dip: 11 }, // Middle
+  { tip: 16, dip: 15 }, // Ring
+  { tip: 20, dip: 19 }, // Pinky
 ];
 
 export async function generateNailMask(imageSrc: string): Promise<{ maskUrl: string; handDetected: boolean }> {
   try {
     const landmarker = await initHandLandmarker();
 
-    // Create intermediate canvas to force full pixel decoding
     const img = new Image();
     img.crossOrigin = "anonymous";
     await new Promise((resolve, reject) => {
@@ -53,15 +52,14 @@ export async function generateNailMask(imageSrc: string): Promise<{ maskUrl: str
     const sourceCtx = sourceCanvas.getContext("2d")!;
     sourceCtx.drawImage(img, 0, 0);
 
-    // Run MediaPipe on clean canvas element
     const detectionResult = landmarker.detect(sourceCanvas);
 
-    // Prepare black binary mask canvas
     const maskCanvas = document.createElement("canvas");
     maskCanvas.width = width;
     maskCanvas.height = height;
     const ctx = maskCanvas.getContext("2d")!;
 
+    // Black background
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, width, height);
 
@@ -85,12 +83,15 @@ export async function generateNailMask(imageSrc: string): Promise<{ maskUrl: str
           const len = Math.hypot(dx, dy);
           const angle = Math.atan2(dy, dx);
 
-          // Dynamic oval sizing aligned with finger rotation
-          const rx = Math.max(len * 0.42, 10);
-          const ry = Math.max(len * 0.30, 8);
+          // TIGHT ANATOMICAL SIZING (stems within nail bed borders)
+          const rx = Math.max(len * 0.22, 6);
+          const ry = Math.max(len * 0.14, 4);
+
+          const nailCenterX = tipX + (dx * 0.08);
+          const nailCenterY = tipY + (dy * 0.08);
 
           ctx.beginPath();
-          ctx.ellipse(tipX, tipY, rx, ry, angle + Math.PI / 2, 0, 2 * Math.PI);
+          ctx.ellipse(nailCenterX, nailCenterY, rx, ry, angle + Math.PI / 2, 0, 2 * Math.PI);
           ctx.fill();
         }
       }
@@ -98,8 +99,6 @@ export async function generateNailMask(imageSrc: string): Promise<{ maskUrl: str
       return { maskUrl: maskCanvas.toDataURL("image/png"), handDetected: true };
     }
 
-    // Default starting points if MediaPipe misses complex pose
-    ctx.fillStyle = "#FFFFFF";
     return { maskUrl: maskCanvas.toDataURL("image/png"), handDetected: false };
   } catch (err) {
     console.error("Mask error:", err);
