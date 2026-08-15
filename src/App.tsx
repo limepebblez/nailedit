@@ -4,7 +4,7 @@ import { Upload, Sparkles, Image as ImageIcon, Download, RefreshCw, Wand2, Eye, 
 import { generateNailMask } from './utils/nailDetector';
 import { generateSuperimposedNails } from './utils/proceduralNails';
 
-const SAMPLE_PHOTO = "https://images.unsplash.com/photo-1604654894610-df63bc536371?q=80&w=1000&auto=format&fit=crop";
+const SAMPLE_PHOTO = "https://images.unsplash.com/photo-1519014816548-bf5fe059798b?q=80&w=1000&auto=format&fit=crop";
 
 const PRESET_PROMPTS = [
   "Y2K Silver Chrome with Star Gems",
